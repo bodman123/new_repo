@@ -1,0 +1,810 @@
+---
+title: "LabHW5"
+author: "Jerry Obour"
+date: "2025-03-28"
+output: 
+  html_document:
+    toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+```
+
+## Question 1:
+
+a)
+```{r}
+K <- 2
+
+mu1 <- matrix(c(-1, -1), ncol = 1)   # What is defined here?
+mu2 <- matrix(c( 1,  1), ncol = 1)   # What is defined here?
+
+Sigma <- matrix(c(3, 0.5, 0.5, 1), nrow = 2)   # What is defined here?
+
+pi <- c(0.3, 0.7)   # What is defined here?
+
+# To determine how to color the points (given that there are only two classes):
+# Start from:
+# P(Y = 1 | X = x) = pi1 * f1(x)
+# P(Y = 2 | X = x) = pi2 * f2(x)
+
+df <- 
+  expand_grid(
+    x1 = seq(-5, 5, 0.01),
+    x2 = seq(-4, 4, 0.01)
+  ) %>%
+  # The expand_grid function creates a data frame with all possible combinations of the above x1 and x2 values.
+  mutate(
+    lhs1 = mvtnorm::dmvnorm(x = cbind(x1, x2), mean = c(mu1), sigma = Sigma, log = TRUE),
+    lhs2 = mvtnorm::dmvnorm(x = cbind(x1, x2), mean = c(mu2), sigma = Sigma, log = TRUE),
+    R = factor(ifelse(lhs1 - lhs2 >= log((pi[2] / pi[1])), 1, 2))
+  )
+  # Carefully explain the above mutate step, and what is computed in each of the three lines.
+
+# Explain what the two contour layers show:
+(graph <-
+  ggplot(df) +
+  geom_point(aes(x = x1, y = x2, color = R), pch = ".", alpha = 0.02) +
+  geom_contour(aes(x = x1, y = x2, z = exp(lhs1)), color = "red", binwidth = 0.02) +
+  geom_contour(aes(x = x1, y = x2, z = exp(lhs2)), color = "blue", binwidth = 0.02))
+
+
+```
+In the above codes for carrying out $LDA$ with $p=2, \quad K =2$, we observe the following:\
+There are two predictors and two classes in all:\
+$\mu_1$ is a vector comprising the means for the first and second predictors for the first class $k=1$ and $\mu_2$ is as well a vector comprising the means for the first and second predictors for the second class $k=2$.\
+We also observe that there is the covariance matrix for both classes $\sigma$. Beyond that, we define the probability that given a specific observation, the observation belongs to either of the two classes.\
+$pi = (0.3,0.7)$ is the prior probability that an observation belongs to a given class 1 or class 2. The probability $0.3$ corresponds to class 1 and $0.7$ to class 2.\
+A grid (data frame) is created comprising of a sequence of values for $x_1$ and $x_2$ and their various combinations. The resulting data frame is passed to the mutate function. In the mutate function, three new columns are added to the data frame `df`; the first is `lhs1` which uses the multivariate normal probability density function to estimate probability values for various combinations of the values of $x_1$ and $x_2$ with the mean $mu_1$ and covariance matrix $sigma$ as were defined above, and the log of the density is returned as the value for each record of `lhs1`. In a similar fashion, same values are calculated for the same values of $x$ but this time with $mu_2$ and same covariance matrix for the column `lhs2`. We then find the difference between each of the pairs and compare against the log of the quotient of $pi_1/pi_2$ and if the result is greater or equal, we classify that combination as belonging to class 1, otherwise to class 2.\
+After the above estimations are made, a contour plot is created for the bivariate normal data differentiated by the two colors blue and red. The red section the graph represents the section for class 1 and the red section for class 2. Moreover, The contour plots( concentric ) circles represent the distributions( the density functions ) for the classes. Whilst the blue color represents class 1, the red color represents the density distribution for class 2.
+
+
+
+b)
+```{r}
+# Formulation #1:
+a <- t(mu1 - mu2) %*% solve(Sigma)
+m <- log((pi[2] / pi[1])) + 0.5 * a %*% (mu1 + mu2)
+
+# Formulation #2 (easier to get to from Section 4.4.2 slide 63):
+a <- solve(Sigma) %*% (mu1 - mu2)
+m <- 0.5 * (t(mu1) %*% solve(Sigma) %*% mu1 - t(mu2) %*% solve(Sigma) %*% mu2) + log(pi[2] / pi[1])
+
+(graph <- graph +
+  (geom_abline(slope = -a[1] / a[2], intercept = m / a[2])))
+
+```
+
+Let $x = (x_1,x_2)^T$, $u_1 = (u_{11},u_{12})^T$ and $u_1 = (u_{21},u_{22})^T$. \
+\[ \text{Let} \quad 
+\Sigma = 
+\begin{pmatrix} 
+    \sigma_{11} & \sigma_{12} \\
+    \sigma_{12} & \sigma_{22}
+\end{pmatrix}
+\]
+and the priors be $\pi_1 \quad  \& \quad \pi_2 $.
+
+$$ P(Y=k | X=x) = \pi_k\frac{1}{(\sqrt{2\pi})^{1/2}|\Sigma|^{1/2}} \exp(-\frac{1}{2}(x-\mu_k)^T\Sigma^{-1}(x-\mu_k) $$
+
+$$(x-\mu_k)^T\Sigma^{-1}(x-\mu_k) = x^T\Sigma^{-1} x - x^T\Sigma^{-1}\mu_k - \mu_k^T\Sigma^{-1} x + \mu_k^T\Sigma^{-1}\mu_k$$
+
+$$\delta_1(x) = \delta_2(x)$$
+
+$$ \log\left( \frac{P(Y=1|X=x)}{P(Y=2|X=x)} \right) = \log\left( \frac{\pi_1}{\pi_2} \exp( -\frac{1}{2}(x-\mu_1)^T\Sigma^{-1}(x-\mu_1) +\frac{1}{2}(x-\mu_2)^T\Sigma^{-1}(x-\mu_2) ) \right) $$
+
+$$ 0 = \log\left(\frac{\pi_1}{\pi_2}\right) -\frac{1}{2}(x-\mu_1)^T\Sigma^{-1}(x-\mu_1) +\frac{1}{2}(x-\mu_2)^T\Sigma^{-1}(x-\mu_2)$$
+$$0 =\log\left(\frac{\pi_1}{\pi_2}\right) +\dfrac{1}{2}x^T\Sigma^{-1}\mu_1 -\dfrac{1}{2}x^T\Sigma^{-1}\mu_2+\dfrac{1}{2}\mu_1^T\Sigma^{-1} x -\dfrac{1}{2}\mu_2\Sigma^{-1} x -\dfrac{1}{2}\mu_1^T\Sigma^{-1}\mu_1 + \dfrac{1}{2}\mu_2^T\Sigma^{-1}\mu_2$$
+
+$$ 0 =\log\left(\frac{\pi_1}{\pi_2}\right) + \dfrac{1}{2}x^T\Sigma^{-1}(\mu_1-\mu_2) + \dfrac{1}{2}(\mu_1^T - \mu_2^T)\Sigma^{-1}x - \dfrac{1}{2}\mu_1^T\Sigma^{-1}\mu_1 + \dfrac{1}{2}\mu_2^T\Sigma^{-1}\mu_2$$
+
+$$ 0 =\log\left(\frac{\pi_1}{\pi_2}\right) + \dfrac{1}{2}x^T\Sigma^{-1}(\mu_1-\mu_2) + \dfrac{1}{2}(\mu_1 - \mu_2)^T\Sigma^{-1}x - \dfrac{1}{2}\mu_1^T\Sigma^{-1}\mu_1 + \dfrac{1}{2}\mu_2^T\Sigma^{-1}\mu_2$$
+
+$$\text{but} \quad \dfrac{1}{2}(\mu_1 - \mu_2)^T\Sigma^{-1}x = \dfrac{1}{2}\left(x^T\Sigma^{-1}(\mu_1-\mu_2)\right)^T $$
+
+$$\implies 0 =\log\left(\frac{\pi_1}{\pi_2}\right) + x^T\Sigma^{-1}(\mu_1-\mu_2)- \dfrac{1}{2}\mu_1^T\Sigma^{-1}\mu_1 + \dfrac{1}{2}\mu_2^T\Sigma^{-1}\mu_2 $$
+
+$$ x^T\Sigma^{-1}(\mu_1-\mu_2) =-\log\left(\frac{\pi_1}{\pi_2}\right) + \dfrac{1}{2}\mu_1^T\Sigma^{-1}\mu_1 - \dfrac{1}{2}\mu_2^T\Sigma^{-1}\mu_2 $$
+
+$$ x^T\Sigma^{-1}(\mu_1-\mu_2) = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2} \left( \mu_1^T\Sigma^{-1}\mu_1 - \mu_2^T\Sigma^{-1}\mu_2 \right) $$
+The second part:
+$$ x^T\Sigma^{-1}(\mu_1-\mu_2) = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2} \left( \mu_1^T\Sigma^{-1}\mu_1 +\mu_1^T\Sigma^{-1}\mu_2 - \mu_1^T\Sigma^{-1}\mu_2 - \mu_2^T\Sigma^{-1}\mu_2 \right) $$
+
+$$ x^T\Sigma^{-1}(\mu_1-\mu_2) = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2} \left( \mu_1^T\Sigma^{-1}(\mu_1 +\mu_2)- (\mu_1^T+\mu_2^T) \Sigma^{-1}\mu_2 \right) $$
+
+$$ x^T\Sigma^{-1}(\mu_1-\mu_2) = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2} \left( \mu_1^T\Sigma^{-1}(\mu_1 +\mu_2)- (\mu_1+\mu_2)^T \Sigma^{-1}\mu_2 \right) $$
+$$ \text{similarly, } \quad (\mu_1+\mu_2)^T \Sigma^{-1}\mu_2  = (\mu_2^T\Sigma^{-1}(\mu_1+\mu_2))^T$$
+$$ \text{suppose in that in the same manner } (\mu_2^T\Sigma^{-1}(\mu_1+\mu_2))^T = \mu_2^T\Sigma^{-1}(\mu_1+\mu_2)$$
+$$ \implies x^T\Sigma^{-1}(\mu_1-\mu_2) = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2}\left( (\mu_1^T -\mu_2^T)\Sigma^{-1}(\mu_1+\mu_2) \right) $$
+$$ (\mu_1-\mu_2)^T\Sigma^{-1}x = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2}\left( (\mu_1^T -\mu_2^T)\Sigma^{-1}(\mu_1+\mu_2) \right) $$
+
+c)
+```{r}
+## Formulation #1:
+#LDA_a <- t(est_mu1 - est_mu2) %*% solve(est_Sigma)
+#LDA_m <- log((est_pi[2] / est_pi[1])) + 0.5 * LDA_a %*% (est_mu1 + est_mu2)
+
+## Formulation #2:
+#LDA_a <- solve(est_Sigma) %*% (est_mu1 - est_mu2)
+#LDA_m <- 0.5 * (t(est_mu1) %*% solve(est_Sigma) %*% est_mu1 - t(est_mu2) %*% solve(est_Sigma) %*% est_mu2) + log(pi[2] / pi[1])
+
+```
+In this section we are computing two important things which are useful in determining the class to which an observation belongs.
+First we have, 
+$$ (\mu_1-\mu_2)^T\Sigma^{-1}x = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2}\left( (\mu_1^T -\mu_2^T)\Sigma^{-1}(\mu_1+\mu_2) \right) $$
+Where the expression on the left is compared to the expression on the right. This can be derived using the log odds or the discriminant function. When the expression on the left is bigger than the expression on the right, we classify as $class 1$ otherwise $class 2$.
+Similarly, in the second formulation, we have
+$$ x^T\Sigma^{-1}(\mu_1-\mu_2) = \log\left(\frac{\pi_2}{\pi_1}\right) + \dfrac{1}{2} \left( \mu_1^T\Sigma^{-1}\mu_1 - \mu_2^T\Sigma^{-1}\mu_2 \right) $$
+which is likewise obtained by either using log odds or the discriminant function and making same argument as above.
+Mathematically, what is happening is that we are determining the boundary $\delta_1(x)=\delta_2(x)$ which separates the observations into their respective classes.
+
+
+## Question 2:
+
+```{r}
+library(ISLR2)
+```
+Loading the data set Auto:
+```{r}
+data_auto <- ISLR2::Auto
+```
+
+```{r}
+head(data_auto)
+```
+
+```{r}
+data_auto <- 
+  data_auto %>%
+  mutate(mpg01 = ifelse(mpg>median(mpg),1,0))
+```
+
+```{r}
+data_view <-
+  data_auto %>%
+  select(mpg,mpg01)
+```
+
+```{r}
+train_indices <- sample(1:NROW(data_auto), size = 0.7 * NROW(data_auto), replace = FALSE)
+
+train_data <- data_auto[train_indices, ]
+test_data <- data_auto[-train_indices, ]
+```
+
+```{r}
+train_data <-
+  train_data %>%
+  select(mpg01,displacement,horsepower,weight)
+
+test_y <- 
+  test_data %>%
+  select(mpg01)
+
+test_x <- 
+  test_data %>%
+  select(displacement,horsepower,weight)
+
+```
+
+
+
+### we perform LDA now::
+```{r}
+n1 <- unname(table(train_data$mpg01)["0"])
+n2 <- unname(table(train_data$mpg01)["1"])
+```
+
+```{r}
+est_mu1 <- matrix(colMeans(train_data[train_data$mpg01 == 0, ])[c("displacement", "horsepower","weight")], ncol = 1)
+est_mu2 <- matrix(colMeans(train_data[train_data$mpg01 == 1, ])[c("displacement", "horsepower","weight")], ncol = 1)
+```
+
+
+
+```{r}
+n=(n1+n2)
+K=2
+# Estimate parameters:
+est_pi <- c(n1 / n, n2 / n)
+
+ssq_1 <- (n1 - 1) * var(train_data %>% filter(mpg01 == 0) %>% select(displacement,horsepower,weight))
+ssq_2 <- (n2 - 1) * var(train_data %>% filter(mpg01 == 1) %>% select(displacement,horsepower,weight))
+
+est_Sigma <- (ssq_1 + ssq_2) / (n - K)
+
+```
+
+
+```{r}
+LDA_a <- t(est_mu1 - est_mu2) %*% solve(est_Sigma)
+LDA_m <- log((est_pi[2] / est_pi[1])) + 0.5 * LDA_a %*% (est_mu1 + est_mu2)
+```
+
+```{r}
+results <-
+test_x %>%
+  mutate(
+    lhs = as.matrix(test_x) %*% t(LDA_a),
+    yhat = factor(ifelse(lhs>=LDA_m[1,1], 0, 1))
+  )
+
+```
+
+```{r}
+
+results$true_y = test_y$mpg01
+
+```
+```{r}
+results %>%
+  summarise(test_error = mean(true_y != yhat))
+```
+
+
+Now to the second part:
+```{r}
+lda_fit <- MASS::lda(mpg01 ~ displacement + horsepower + weight, data = train_data)
+plot(lda_fit)
+```
+```{r}
+pred_fn <- predict(lda_fit, test_x)
+```
+
+```{r}
+results_fn <- tibble(tibble(true_y = test_y$mpg01))
+results_fn$pred <- pred_fn$class
+
+results_fn %>%
+  summarise(test_error = mean(true_y != pred))
+```
+By comparison, the test error obtained for the lda using brute force approach is same as the test error obtained for the in-built function.
+
+
+e)
+
+```{r}
+ssq_1 <- var(train_data %>% filter(mpg01 == 0) %>% select(displacement,horsepower,weight))
+ssq_2 <- var(train_data %>% filter(mpg01 == 1) %>% select(displacement,horsepower,weight))
+invSigma1 <- solve(ssq_1)
+invSigma2 <- solve(ssq_2)
+
+A <- 0.5*(invSigma2 - invSigma1)
+B <- t(est_mu1) %*% invSigma1 - t(est_mu2) %*% invSigma2
+k <- c((1 / 2) * log(det(ssq_1) / det(ssq_2)) + (1 / 2) * (t(est_mu1) %*% invSigma1 %*% est_mu1 - t(est_mu2) %*% invSigma2 %*% est_mu2))
+C <- log((pi[2] / pi[1])) + k
+```
+
+```{r}
+compute_expression <- function(row, A, B) {
+  x <- as.matrix(row)
+  
+  # x^T A x
+  result1 <- t(x) %*% A %*% x
+  # Bx
+  result2 <- (B) %*% x
+  return(result1 + result2)
+}
+
+# Apply the function to each row of test_x and store the result
+res_lhs <- apply(test_x, 1, compute_expression, A = A, B = B)
+```
+
+```{r}
+results1 <-
+test_x %>%
+  mutate(
+    lhs = res_lhs,
+    yhat = factor(ifelse(lhs>=C, 0, 1))
+  )
+
+```
+
+```{r}
+
+results1$true_y = test_y$mpg01
+```
+
+```{r}
+results1 %>%
+  summarise(test_error = mean(true_y != yhat))
+```
+
+
+Now qda function
+Now to the second part:
+```{r}
+qda_fit <- MASS::qda(mpg01 ~ displacement + horsepower + weight, data = train_data)
+```
+
+```{r}
+pred_fn1 <- predict(qda_fit, test_x)
+```
+
+```{r}
+results_fn1 <- tibble(tibble(true_y = test_y$mpg01))
+results_fn1$pred <- pred_fn1$class
+
+results_fn1 %>%
+  summarise(test_error = mean(true_y != pred))
+```
+By comparison, it can be seen that the test error obtained for the qda using brute force is larger than the results obtained using the in-built function.
+
+g)
+
+```{r}
+# Estimate parameters:
+est_pi <- c(n1 / n, n2 / n)
+
+est_mu1_Rvec <- colMeans(train_data[train_data$mpg01 == 0, ])[c(c("displacement", "horsepower","weight"))]
+est_mu1 <- matrix(est_mu1_Rvec, ncol = 1)
+est_mu2_Rvec <- colMeans(train_data[train_data$mpg01 == 1, ])[c(c("displacement", "horsepower","weight"))]
+est_mu2 <- matrix(est_mu2_Rvec, ncol = 1)
+
+ssq_1 <- var(train_data %>% filter(mpg01 == 0) %>% select(displacement,horsepower,weight))
+ssq_1_diag <- diag(diag(ssq_1))
+
+ssq_2 <- var(train_data %>% filter(mpg01 == 1) %>% select(displacement,horsepower,weight))
+ssq_2_diag <- diag(diag(ssq_2))
+
+k = log(sqrt(det(ssq_1_diag)/det(ssq_2_diag))) + sum(0.5*(t(est_mu1^2)%*%solve(ssq_1_diag))) - sum(0.5*(t(est_mu2^2)%*%solve(ssq_2_diag)))
+C = log((pi[2] / pi[1])) + k
+B = ((t(est_mu1)%*%solve(ssq_1_diag)) -  (t(est_mu2)%*%solve(ssq_2_diag)))
+D = 0.5 *(solve(ssq_2_diag)-solve(ssq_1_diag))
+
+
+
+# (What else do you need to compute based on slides 59 and 61?)
+
+```
+
+```{r}
+compute_lhs <- function(row, A, B) {
+  x <- as.matrix(row)
+  # x^T A x
+  result1 <- A%*% (x)
+  # Bx
+  result2 <- sum((B) %*% (x^2))
+  return(result1 + result2)
+}
+
+NB_lhs <- apply(test_x, 1, compute_lhs, A = B, B = D)
+```
+
+```{r}
+results2 <-
+test_x %>%
+  mutate(
+    lhs = NB_lhs,
+    yhat = factor(ifelse(lhs>=C, 0, 1))
+  )
+```
+
+```{r}
+
+results2$true_y = test_y$mpg01
+results2 %>%
+  summarise(test_error = mean(true_y != yhat))
+```
+
+
+Function inbuilt
+```{r}
+library(naivebayes)
+```
+
+```{r}
+nb_gaussian <- naive_bayes(factor(mpg01) ~ displacement + horsepower + weight, data = train_data)
+pred_fn2 <- predict(nb_gaussian, newdata = test_x)
+```
+
+
+
+```{r}
+results_fn2 <- tibble(tibble(true_y = test_y$mpg01))
+results_fn2$pred <- pred_fn2
+
+results_fn2 %>%
+  summarise(test_error = mean(true_y != pred))
+```
+Here the test error obtained for the brute force naive bayes approach is smaller than the results obtained for the naive bayes approach using the in-built function.
+
+## Question 3:
+
+```{r}
+
+# Generative model for Scenario 1:
+set.seed(1)
+K <- 2
+p <- 4
+pi <- rep(1 / K, K)
+
+library(tidyverse)
+library(mvtnorm)
+
+sample_data_scenario_1 <- function(n, mu, Sigma) {
+  # Sample number of observations per class:
+  class_sizes <- c(rmultinom(1, n, pi))
+  
+  # Sample predictors for each class:
+  df_sample <- NULL
+  for (k in 1:K) {
+    predictors_matrix_k <- rmvnorm(class_sizes[k], mean = mu[k, ], sigma = Sigma[[k]])
+    colnames(predictors_matrix_k) <- str_c("x", 1:p)
+    df_sample_k <- as_tibble(predictors_matrix_k) %>% mutate(y = k - 1)
+    df_sample <- bind_rows(df_sample, df_sample_k)
+  }
+  
+  return(df_sample)
+}
+
+
+```
+
+```{r}
+mu <- 
+  matrix(
+    c(
+      -1,0.5,1 ,1.25,      # mu1
+      1,1.5,-1.0, 1       # mu2
+    ),
+    nrow = 2,
+    byrow = TRUE
+  )
+
+shared_Sigma <- matrix(c(1, 0.5, 0.5, 0.5,0.5, 1, 0.3, 0.3,0.5, 0.3, 1, 0.2,0.5, 0.3, 0.2, 1), nrow = 4)
+Sigma <- list(shared_Sigma, shared_Sigma)
+
+#testing data
+df_testing <- sample_data_scenario_1(500, mu = mu, Sigma = Sigma)
+```
+
+
+
+```{r,warning=FALSE}
+M <- 200
+n_train <- 200
+classification_errors <- 
+  tibble(
+    m = 1:M, 
+    LDA = NA,
+    Logistic = NA,
+  )
+
+for (m in 1:M) {
+  df_training <- sample_data_scenario_1(n_train, mu = mu, Sigma = Sigma)
+  
+  lda_fit <- MASS::lda(y ~ ., data = df_training)
+  pred_testing <- predict(lda_fit, newdata = df_testing)
+  classification_errors$LDA[m] <- table(df_testing$y == pred_testing$class)["FALSE"] / nrow(df_testing)
+  
+  
+  
+  logistic_fit <- glm(y ~ ., data = df_training, family = "binomial")
+  pred_testing <- as.integer(predict(logistic_fit, newdata = df_testing, type = "response") > 0.5)
+  classification_errors$Logistic[m] <- table(df_testing$y == pred_testing)["FALSE"] / nrow(df_testing)
+  
+  
+}
+
+classification_errors_long <- 
+  pivot_longer(
+    classification_errors,
+    cols = -m,
+    names_to = "Classifier",
+    values_to = "Error rate"
+  ) %>%
+  mutate(
+    Classifier = 
+      factor(
+        Classifier, 
+        levels = 
+          c(
+            "LDA", "Logistic"
+          )
+      ),
+    group = 
+      case_when(
+        Classifier %in% c("LDA", "Logistic") ~ "Linear model",
+      ),
+    group = factor(group, levels = c("Linear model"))
+  )
+
+classification_errors_long %>%
+  ggplot() +
+  geom_boxplot(aes(x = Classifier, y = `Error rate`, fill = group)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    legend.title = element_blank()
+    )
+
+```
+```{r}
+
+error_Rates <- tibble(normality = character(0), LDA = numeric(0), Logistic = numeric(0))
+
+```
+
+```{r}
+error_Rates <- add_row(error_Rates, normality = "normal", LDA = classification_errors$LDA[50], Logistic = classification_errors$Logistic[50])
+error_Rates
+```
+
+
+
+```{r}
+library(sn)
+K <- 2
+p <- 4
+pi <- rep(1 / K, K)
+sample_non_normal <- function(n, mu, Sigma,alpha) {
+  # Sample number of observations per class:
+  class_sizes <- c(rmultinom(1, n, pi))
+  
+  # Sample predictors for each class:
+  df_sample <- NULL
+  for (k in 1:K) {
+    
+    xi <- mu[[k]]  # Mean vector for class k
+    omega <- Sigma[[k]]  # Covariance matrix for class k
+    
+    
+    predictors_matrix_k <- as.numeric(rsn(class_sizes[k], xi = xi, omega = omega,alpha=alpha))
+    colnames(predictors_matrix_k) <- str_c("x", 1:p)
+    df_sample_k <- as_tibble(predictors_matrix_k) %>% mutate(y = k - 1)
+    df_sample <- bind_rows(df_sample, df_sample_k)
+  }
+  
+  return(df_sample)
+}
+
+
+```
+
+```{r}
+ matrix(
+    c(
+      -1,0.5,1 ,1.25,      # mu1
+      1,1.5,-1.0, 1       # mu2
+    ),
+    nrow = 2,
+    byrow = TRUE
+  )
+
+shared_Sigma <- matrix(c(1, 0.5, 0.5, 0.5,0.5, 1, 0.3, 0.3,0.5, 0.3, 1, 0.2,0.5, 0.3, 0.2, 1), nrow = 4)
+Sigma <- list(shared_Sigma, shared_Sigma)
+df_test <- sample_data_scenario_1(500, mu = mu, Sigma = Sigma)
+
+```
+
+```{r}
+transform_data <- function(data, transform_type) {
+  yv=data$y
+  if (transform_type == "log") {
+    data_transformed <- log(abs(data[,1:4]) + 1e-5)  # Adding a small constant to avoid log(0)
+  } else if (transform_type == "sqr") {
+    data_transformed <- (abs(data[,1:4]))^2
+  } else if (transform_type == "cube") {
+    data_transformed <- abs(data[,1:4])^3
+  }
+  data_transformed$y = yv
+  return(data_transformed)
+}
+
+```
+
+
+
+```{r}
+ts_data = transform_data(df_test,"log")
+M <- 200
+n_train <- 200
+classification_errors <- 
+  tibble(
+    m = 1:M, 
+    LDA = NA,
+    Logistic = NA,
+  )
+
+for (m in 1:M) {
+  df_training <- transform_data(sample_data_scenario_1(n_train, mu = mu, Sigma = Sigma),"log")
+  
+  lda_fit <- MASS::lda(y ~ ., data = df_training)
+  pred_testing <- predict(lda_fit, newdata = ts_data)
+  classification_errors$LDA[m] <- table(df_testing$y == pred_testing$class)["FALSE"] / nrow(df_testing)
+  
+  
+  
+  logistic_fit <- glm(y ~ ., data = df_training, family = "binomial")
+  pred_testing <- as.integer(predict(logistic_fit, newdata = ts_data, type = "response") > 0.5)
+  classification_errors$Logistic[m] <- table(df_testing$y == pred_testing)["FALSE"] / nrow(df_testing)
+  
+  
+}
+
+classification_errors_long <- 
+  pivot_longer(
+    classification_errors,
+    cols = -m,
+    names_to = "Classifier",
+    values_to = "Error rate"
+  ) %>%
+  mutate(
+    Classifier = 
+      factor(
+        Classifier, 
+        levels = 
+          c(
+            "LDA", "Logistic"
+          )
+      ),
+    group = 
+      case_when(
+        Classifier %in% c("LDA", "Logistic") ~ "Linear model",
+      ),
+    group = factor(group, levels = c("Linear model"))
+  )
+
+classification_errors_long %>%
+  ggplot() +
+  geom_boxplot(aes(x = Classifier, y = `Error rate`, fill = group)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    legend.title = element_blank()
+    )
+
+```
+
+
+```{r}
+error_Rates <- add_row(error_Rates, normality = "log", LDA = classification_errors$LDA[50], Logistic = classification_errors$Logistic[50])
+error_Rates
+
+```
+
+
+```{r}
+ts_data = transform_data(df_test,"sqr")
+M <- 200
+n_train <- 200
+classification_errors <- 
+  tibble(
+    m = 1:M, 
+    LDA = NA,
+    Logistic = NA,
+  )
+
+for (m in 1:M) {
+  df_training <- transform_data(sample_data_scenario_1(n_train, mu = mu, Sigma = Sigma),"sqr")
+  
+  lda_fit <- MASS::lda(y ~ ., data = df_training)
+  pred_testing <- predict(lda_fit, newdata = ts_data)
+  classification_errors$LDA[m] <- table(df_testing$y == pred_testing$class)["FALSE"] / nrow(df_testing)
+  
+  
+  
+  logistic_fit <- glm(y ~ ., data = df_training, family = "binomial")
+  pred_testing <- as.integer(predict(logistic_fit, newdata = ts_data, type = "response") > 0.5)
+  classification_errors$Logistic[m] <- table(df_testing$y == pred_testing)["FALSE"] / nrow(df_testing)
+  
+  
+}
+
+classification_errors_long <- 
+  pivot_longer(
+    classification_errors,
+    cols = -m,
+    names_to = "Classifier",
+    values_to = "Error rate"
+  ) %>%
+  mutate(
+    Classifier = 
+      factor(
+        Classifier, 
+        levels = 
+          c(
+            "LDA", "Logistic"
+          )
+      ),
+    group = 
+      case_when(
+        Classifier %in% c("LDA", "Logistic") ~ "Linear model",
+      ),
+    group = factor(group, levels = c("Linear model"))
+  )
+
+classification_errors_long %>%
+  ggplot() +
+  geom_boxplot(aes(x = Classifier, y = `Error rate`, fill = group)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    legend.title = element_blank()
+    )
+
+```
+
+```{r}
+error_Rates <- add_row(error_Rates, normality = "squared", LDA = classification_errors$LDA[50], Logistic = classification_errors$Logistic[50])
+error_Rates
+
+```
+
+```{r}
+ts_data = transform_data(df_test,"cube")
+M <- 200
+n_train <- 200
+classification_errors <- 
+  tibble(
+    m = 1:M, 
+    LDA = NA,
+    Logistic = NA,
+  )
+
+for (m in 1:M) {
+  df_training <- transform_data(sample_data_scenario_1(n_train, mu = mu, Sigma = Sigma),"cube")
+  
+  lda_fit <- MASS::lda(y ~ ., data = df_training)
+  pred_testing <- predict(lda_fit, newdata = ts_data)
+  classification_errors$LDA[m] <- table(df_testing$y == pred_testing$class)["FALSE"] / nrow(df_testing)
+  
+  
+  
+  logistic_fit <- glm(y ~ ., data = df_training, family = "binomial")
+  pred_testing <- as.integer(predict(logistic_fit, newdata = ts_data, type = "response") > 0.5)
+  classification_errors$Logistic[m] <- table(df_testing$y == pred_testing)["FALSE"] / nrow(df_testing)
+  
+  
+}
+
+classification_errors_long <- 
+  pivot_longer(
+    classification_errors,
+    cols = -m,
+    names_to = "Classifier",
+    values_to = "Error rate"
+  ) %>%
+  mutate(
+    Classifier = 
+      factor(
+        Classifier, 
+        levels = 
+          c(
+            "LDA", "Logistic"
+          )
+      ),
+    group = 
+      case_when(
+        Classifier %in% c("LDA", "Logistic") ~ "Linear model",
+      ),
+    group = factor(group, levels = c("Linear model"))
+  )
+
+classification_errors_long %>%
+  ggplot() +
+  geom_boxplot(aes(x = Classifier, y = `Error rate`, fill = group)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    legend.title = element_blank()
+    )
+
+```
+
+
+```{r}
+error_Rates <- add_row(error_Rates, normality = "cube", LDA = classification_errors$LDA[50], Logistic = classification_errors$Logistic[50])
+error_Rates
+```
+
+Our assumptions can be justified from the above results that as we increase the non-normality in the data, the Logistic regression tends to performs better compared to the LDA. 

@@ -1,0 +1,184 @@
+---
+title: "LabHW6"
+author: "Jerry Obour"
+date: "2025-04-06"
+output: 
+  html_document:
+    toc: True
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, Warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+```
+
+## Question 1
+
+```{r problem-1}
+# Figure 5.6, left panel -----
+f_2_9 <- function(x) {
+  -4.5 * ((x - 10) / 50)^3 + 9 * ((x - 10) / 50)^2 + 4.2
+}
+
+set.seed(1)
+n_train <- 45
+n_test <- 15
+n <- n_train + n_test
+var_epsilon <- 2
+
+# The test data is only used to compute the true MSEP:
+test_data <- 
+  tibble(
+    x = runif(n = n_test, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n_test, sd = sqrt(var_epsilon)),
+    type = "te"
+  )
+
+# We will try to estimate the test data based on the training set:
+train_data <- 
+  tibble(
+    x = runif(n = n_train, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n_train, sd = sqrt(var_epsilon)),
+    type = "tr"
+  )
+
+df_seq <- seq(2, 25, 0.1)
+
+# Compute true MSEP:
+MSEP_true <- tibble(df = rep(NA, length(df_seq)), True = NA)
+
+for(i in 1:length(df_seq)) {
+  MSEP_true$df[i] <- df_seq[i]
+  smsp_2_9 <- smooth.spline(x = train_data$x, y = train_data$y, df = df_seq[i])
+  
+  pred_test <- predict(smsp_2_9, x = test_data$x)
+  MSEP_true$True[i] <- mean((test_data$y - pred_test$y)^2)
+} 
+
+# Estimate with LOOCV:
+MSEP_LOOCV <- tibble(i = rep(NA, n_train * length(df_seq)), df = NA, MSEP_i = NA)
+j <- 1
+for (i in 1:n_train) {
+  for (df in df_seq) {
+    smsp_2_9 <- smooth.spline(x = train_data[setdiff(1:n_train, i), ]$x, y =train_data[setdiff(1:n_train, i), ]$y, df = df)
+    
+    pred <- predict(smsp_2_9, x = train_data[i, ]$x)
+    MSEP_LOOCV$MSEP_i[j] <- (train_data[i, ]$y - pred$y) ^ 2
+    MSEP_LOOCV$i[j] <- i
+    MSEP_LOOCV$df[j] <- df
+    
+    j <- j + 1
+  }    
+}
+
+MSEP_LOOCV_summary <- 
+  MSEP_LOOCV %>%
+  group_by(df) %>%
+  summarize(LOOCV = mean(MSEP_i)) 
+
+# Estimate with k-fold:
+k <- 10
+k.o <- k
+kvals <- unique(round(n_train/(1L:floor(n_train/2))))
+temp <- abs(kvals - k)
+if (!any(temp == 0))  { k <- kvals[temp == min(temp)][1L] }
+f <- ceiling(n_train/k)
+
+MSEP_k_fold <- tibble(i = rep(NA, k * length(df_seq)), df = NA, MSEP_i = NA)
+j <- 1
+train_data$fold <- sample(rep(1L:k, f), n_train)
+# table(train_data$fold)
+for (i in 1:k) {
+  current_train_folds <- train_data %>% filter(fold != i)
+  current_test_fold <- train_data %>% filter(fold == i)
+  
+  for (df in df_seq) {
+    smsp_2_9 <- smooth.spline(x = current_train_folds$x, y = current_train_folds$y, df = df)
+    pred <- predict(smsp_2_9, x = current_test_fold$x)
+    
+    MSEP_k_fold$MSEP_i[j] <- mean( (current_test_fold$y - pred$y) ^ 2 )
+    MSEP_k_fold$i[j] <- i
+    MSEP_k_fold$df[j] <- df
+    
+    j <- j + 1
+  }    
+}
+
+MSEP_k_fold_summary <- 
+  MSEP_k_fold %>%
+  group_by(df) %>%
+  summarize(k_fold = mean(MSEP_i)) 
+
+MSEP_compare <-
+  MSEP_true %>%
+  left_join(MSEP_LOOCV_summary, by = "df") %>%
+  left_join(MSEP_k_fold_summary, by = "df") %>%
+  pivot_longer(cols = -df, names_to = "Type", values_to = "MSEP")
+
+min_test_df <-
+  MSEP_compare %>%
+  group_by(Type) %>%
+  filter(MSEP == min(MSEP))
+
+ggplot(MSEP_compare) +
+  geom_line(aes(x = df, y = MSEP, color = Type)) +
+  theme_bw() +
+  xlab("Flexibility") +
+  ylab("Mean Squared Error") +
+  geom_point(data = min_test_df, aes(x = df, y = MSEP, color = Type), shape = "X", size = 3.5)
+```
+For lower degrees of freedom, the two cross-validation curves slightly underestimate the true MSE and as the flexibility increases we find that whilst the LOOCV is close to the True MSE curve, the k-fold CV tends to over estimate the true MSE after some point if increasing the flexibility.
+
+## Question 3
+```{r bootstrap a-d}
+#a)
+set.seed(1)
+data_set <- ISLR2::Default
+#categorical: default (Y/N) & student(Y/N)
+#numeric : balance & income -- double
+data_set <-
+  data_set %>%
+  mutate(response = ifelse(default=="Yes",1,0))
+
+fit_model <- glm(response ~ income+balance,family = "binomial", data = data_set)
+(summary(fit_model))
+
+#b)
+# -- now to bootstrap
+N <- nrow(data_set)
+M <- 5000
+coeff_estimates <- tibble(intercept = numeric(M), income = numeric(M), balance = numeric(M))
+for (i in 1:M){
+  
+  m_Fit <- glm(response ~ income+balance,family = "binomial", data = data_set, subset = sample(N,N,replace = TRUE))
+  
+  coeff_estimates[i,] = t(as.numeric(m_Fit$coefficients))
+  
+  
+}
+
+(standard_errors <-
+    coeff_estimates %>%
+    summarise(intercept = sd(intercept), income = sd(income), balance = sd(balance)))
+
+
+#Results obtained for the formula is same as using `sd` from R
+#sqrt((1/(M-1))*(sum((coeff_estimates$intercept - mean(coeff_estimates$intercept))^2)))
+
+#sqrt((1/(M-1))*(sum((coeff_estimates$income - mean(coeff_estimates$income))^2)))
+
+#sqrt((1/(M-1))*(sum((coeff_estimates$balance - mean(coeff_estimates$balance))^2)))
+
+```
+
+
+Clearly, the standard error estimates from both the summary of the `glm` and the `bootstrap` are closely alike. Using `5000` simulated data randomly sampled with replacement from the actual data given with bootstrap, the standard errors obtained for the coefficients serve as estimates for the actual standard errors for the coefficients. By comparison of the results, we can say that the bootstrap can be used to effectively estimate the variability associated with each of the given coefficients.
+We also know that if there were to be difference in the results obtained for both approaches, then bootstrap would have been accurate compared to the results from the standard formula used by the model as the bootstrap does not rely on any assumptions to estimate the standard errors hence would yield more accurate results compared to the standard formula.
