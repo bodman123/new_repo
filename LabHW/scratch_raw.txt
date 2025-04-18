@@ -1,0 +1,713 @@
+# scratch file for hw 6 04/07/2025
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+# Figure 5.6, left panel -----
+f_2_9 <- function(x) {
+  -4.5 * ((x - 10) / 50)^3 + 9 * ((x - 10) / 50)^2 + 4.2
+}
+
+set.seed(1)
+n_train <- 45
+n_test <- 15
+n <- n_train + n_test
+var_epsilon <- 2
+
+# The test data is only used to compute the true MSEP:
+test_data <- 
+  tibble(
+    x = runif(n = n_test, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n_test, sd = sqrt(var_epsilon)),
+    type = "te"
+  )
+
+# We will try to estimate the test data based on the training set:
+train_data <- 
+  tibble(
+    x = runif(n = n_train, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n_train, sd = sqrt(var_epsilon)),
+    type = "tr"
+  )
+
+df_seq <- seq(2, 25, 0.1)
+
+# Compute true MSEP:
+MSEP_true <- tibble(df = rep(NA, length(df_seq)), True = NA)
+
+for(i in 1:length(df_seq)) {
+  MSEP_true$df[i] <- df_seq[i]
+  smsp_2_9 <- smooth.spline(x = train_data$x, y = train_data$y, df = df_seq[i])
+  
+  pred_test <- predict(smsp_2_9, x = test_data$x)
+  MSEP_true$True[i] <- mean((test_data$y - pred_test$y)^2)
+} 
+
+# Estimate with LOOCV:
+MSEP_LOOCV <- tibble(i = rep(NA, n_train * length(df_seq)), df = NA, MSEP_i = NA)
+j <- 1
+for (i in 1:n_train) {
+  for (df in df_seq) {
+    smsp_2_9 <- smooth.spline(x = train_data[setdiff(1:n_train, i), ]$x, y =train_data[setdiff(1:n_train, i), ]$y, df = df)
+    
+    pred <- predict(smsp_2_9, x = train_data[i, ]$x)
+    MSEP_LOOCV$MSEP_i[j] <- (train_data[i, ]$y - pred$y) ^ 2
+    MSEP_LOOCV$i[j] <- i
+    MSEP_LOOCV$df[j] <- df
+    
+    j <- j + 1
+  }    
+}
+
+MSEP_LOOCV_summary <- 
+  MSEP_LOOCV %>%
+  group_by(df) %>%
+  summarize(LOOCV = mean(MSEP_i)) 
+
+# Estimate with k-fold:
+k <- 10
+k.o <- k
+kvals <- unique(round(n_train/(1L:floor(n_train/2))))
+temp <- abs(kvals - k)
+if (!any(temp == 0))  { k <- kvals[temp == min(temp)][1L] }
+f <- ceiling(n_train/k)
+
+MSEP_k_fold <- tibble(i = rep(NA, k * length(df_seq)), df = NA, MSEP_i = NA)
+j <- 1
+train_data$fold <- sample(rep(1L:k, f), n_train)
+# table(train_data$fold)
+for (i in 1:k) {
+  current_train_folds <- train_data %>% filter(fold != i)
+  current_test_fold <- train_data %>% filter(fold == i)
+  
+  for (df in df_seq) {
+    smsp_2_9 <- smooth.spline(x = current_train_folds$x, y = current_train_folds$y, df = df)
+    pred <- predict(smsp_2_9, x = current_test_fold$x)
+    
+    MSEP_k_fold$MSEP_i[j] <- mean( (current_test_fold$y - pred$y) ^ 2 )
+    MSEP_k_fold$i[j] <- i
+    MSEP_k_fold$df[j] <- df
+    
+    j <- j + 1
+  }    
+}
+
+MSEP_k_fold_summary <- 
+  MSEP_k_fold %>%
+  group_by(df) %>%
+  summarize(k_fold = mean(MSEP_i)) 
+
+MSEP_compare <-
+  MSEP_true %>%
+  left_join(MSEP_LOOCV_summary, by = "df") %>%
+  left_join(MSEP_k_fold_summary, by = "df") %>%
+  pivot_longer(cols = -df, names_to = "Type", values_to = "MSEP")
+
+min_test_df <-
+  MSEP_compare %>%
+  group_by(Type) %>%
+  filter(MSEP == min(MSEP))
+
+ggplot(MSEP_compare) +
+  geom_line(aes(x = df, y = MSEP, color = Type)) +
+  theme_bw() +
+  xlab("Flexibility") +
+  ylab("Mean Squared Error") +
+  geom_point(data = min_test_df, aes(x = df, y = MSEP, color = Type), shape = "X", size = 3.5)
+
+
+
+## Bootstrap Modified::
+set.seed(1)
+data_set <- ISLR2::Default
+#categorical: default (Y/N) & student(Y/N)
+#numeric : balanec & income -- double
+data_set <-
+  data_set %>%
+  mutate(response = ifelse(default=="Yes",1,0))
+
+fit_model <- glm(response ~ income+balance,family = "binomial", data = data_set)
+summary(fit_model)
+
+# -- now to bootstrap
+N <- nrow(data_set)
+M <- 1000
+coeff_estimates <- tibble(intercept = numeric(M), income = numeric(M), balance = numeric(M))
+for (i in 1:M){
+  
+  m_Fit <- glm(response ~ income+balance,family = "binomial", data = data_set, subset = sample(N,N,replace = TRUE))
+  
+  coeff_estimates[i,] = t(as.numeric(m_Fit$coefficients))
+  
+  
+}
+
+(standard_errors <-
+    coeff_estimates %>%
+    summarise(intercept = sd(intercept), income = sd(income), balance = sd(balance)))
+
+sqrt((1/(M-1))*(sum((coeff_estimates$intercept - mean(coeff_estimates$intercept))^2)))
+
+sqrt((1/(M-1))*(sum((coeff_estimates$income - mean(coeff_estimates$income))^2)))
+
+sqrt((1/(M-1))*(sum((coeff_estimates$balance - mean(coeff_estimates$balance))^2)))
+
+
+
+
+
+
+
+## Hw 7...
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(tidyr)
+library(parallel)
+library(leaps)
+
+
+# Generative model for Scenario 1:
+set.seed(1)
+p <- 20
+n=1000
+
+
+sample_data <- function(n,p) {
+  # random noise:
+  epsilon <- rnorm(n, mean = 0, sd = 0.5)
+  # Sample predictors for each class:
+  vX <- matrix(NA,n,p,dimnames = list(NULL,str_c("x",1:p)))
+  vB <- rnorm(p,0,1)
+  vB[5:11] <- 0
+  vB <- sample(vB)
+  df_sample <- NULL
+  for (k in 1:p) {
+    vX[,k] <- rnorm(n,mean = 2, sd=10)
+  }
+  
+  vY = vX %*% vB + epsilon
+  
+  df_sample <- as_tibble(vX) %>% mutate(y = vY)
+  
+  return(df_sample)
+}
+
+#sample data for excercise
+df <- sample_data(n,p)
+head(df)
+
+
+train_indices <- sample(1:nrow(df), size = 0.1 * NROW(df), replace = FALSE)
+train_data <- df[train_indices, ]
+test_data <- df[-train_indices, ]
+
+
+response <- "y"
+predictors <- train_data %>% select(-y) %>% colnames()
+p <- length(predictors)
+
+# Create list of models
+nvmax <- p
+m <- NULL
+for (i in 1:nvmax) {
+  m <- 
+    rbind(
+      m, 
+      t(apply(combn(1:nvmax, i), 2, function(vars) { r <- rep(FALSE, p); r[vars] <- TRUE; r })))
+}
+stopifnot(nrow(m) == 2^nvmax - 1)
+colnames(m) <- predictors
+n_models <- 2^nvmax - 1
+
+Rsq_vec <- numeric(n_models)
+RSS_vec <- numeric(n_models)
+predictors_vec <- character(n_models)
+for (i in 1:n_models) {
+  rhs <- str_c(predictors[m[i, ]], collapse = " + ")
+  predictors_vec[i] <- rhs
+  f <- str_c(response, " ~ ", rhs)
+  summary_lm_fit <- summary(lm(formula = f, data = train_data))
+  RSS_vec[i] <- sum( resid(summary_lm_fit)^2 )
+  Rsq_vec[i] <- summary_lm_fit$r.squared
+}
+
+best_subset_full <-
+  as_tibble(m) %>%
+  mutate(
+    n_predictors = rowSums(.),
+    predictors = predictors_vec,
+    Rsq = Rsq_vec,
+    RSS = RSS_vec
+  ) %>%
+  group_by(n_predictors) %>%
+  mutate(
+    max_Rsq = (Rsq == max(Rsq)),
+    min_RSS = (RSS == min(RSS))
+  )
+
+
+
+n_train <- nrow(train_data)
+
+# Add MSE column
+best_subset_MSE <- best_subset_full %>%
+  filter(min_RSS) %>%
+  mutate(MSE = RSS / n_train)
+
+# Plot Training MSE vs. number of predictors
+g_MSE <- ggplot(best_subset_MSE, aes(x = n_predictors, y = MSE)) +
+  geom_line(color = "red") +
+  geom_point(color = "blue") +
+  theme_bw() +
+  xlab("Number of Predictors") +
+  ylab("Training MSE") +
+  ggtitle("Training MSE for Best Subset Models")
+
+# Safe to use plotly here since only p points
+ggplotly(g_MSE)
+
+View(best_subset_MSE)
+
+
+
+
+
+# Make sure best_subset_MSE is ungrouped
+best_subset_MSE <- best_subset_MSE %>% ungroup()
+
+# Create vector to store Test MSEs
+test_MSE_vec <- numeric(nrow(best_subset_MSE))
+
+# Loop over the 20 best models (one per subset size)
+for (i in seq_len(nrow(best_subset_MSE))) {
+  # Get formula for best model at this size
+  rhs <- best_subset_MSE$predictors[i]
+  f <- as.formula(paste("y ~", rhs))
+  
+  # Fit model on training data
+  model <- lm(f, data = train_data)
+  
+  # Predict on test data
+  y_pred <- predict(model, newdata = test_data)
+  
+  # Compute test MSE
+  test_MSE_vec[i] <- mean((test_data$y - y_pred)^2)
+}
+
+test_MSE_vec
+
+# Add Test MSE to your tibble
+best_subset_MSE <- best_subset_MSE %>%
+  ungroup() %>%                
+  mutate(Test_MSE = test_MSE_vec)
+
+
+
+
+
+ggplot(best_subset_MSE, aes(x = n_predictors, y = Test_MSE)) +
+  geom_line(color = "darkorange") +
+  geom_point(color = "purple") +
+  theme_bw() +
+  xlab("Number of Predictors") +
+  ylab("Test MSE") +
+  ggtitle("Test MSE for Best Subset Models")
+
+
+
+best_subset_MSE %>%
+  filter(Test_MSE == min(Test_MSE))
+
+
+
+
+
+
+#-------------------------------------------
+---
+title: "LabHW7"
+author: "Jerry Obour"
+date: "2025-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(mvtnorm)
+```
+
+
+```{r data-generate}
+
+# Generative model for Scenario 1:
+set.seed(1)
+p <- 20
+n=1000
+
+
+sample_data <- function(n,p) {
+  # random noise:
+  epsilon <- rnorm(n, mean = 0, sd = 0.1)
+  # Sample predictors for each class:
+  vX <- matrix(NA,n,p,dimnames = list(NULL,str_c("x",1:p)))
+  vB <- rnorm(p,0,1)
+  vB[5:11] <- 0
+  vB <- sample(vB)
+  df_sample <- NULL
+  for (k in 1:p) {
+    vX[,k] <- rnorm(n,mean = 0, sd=5)
+  }
+  
+  vY = vX %*% vB + epsilon
+  
+  df_sample <- as_tibble(vX) %>% mutate(y = vY)
+  
+  return(df_sample)
+}
+
+#sample data for excercise
+df <- sample_data(n,p)
+
+```
+
+```{r data-splitting}
+
+train_indices <- sample(1:nrow(df), size = 0.1 * NROW(df), replace = FALSE)
+train_data <- df[train_indices, ]
+test_data <- df[-train_indices, ]
+
+```
+
+```{r}
+response <- "y"
+predictors <- train_data %>% select(-y) %>% colnames()
+p <- length(predictors)
+
+# Create list of models
+nvmax <- p
+m <- NULL
+for (i in 1:nvmax) {
+  m <- 
+    rbind(
+      m, 
+      t(apply(combn(1:nvmax, i), 2, function(vars) { r <- rep(FALSE, p); r[vars] <- TRUE; r })))
+}
+stopifnot(nrow(m) == 2^nvmax - 1)
+colnames(m) <- predictors
+n_models <- 2^nvmax - 1
+
+Rsq_vec <- numeric(n_models)
+RSS_vec <- numeric(n_models)
+predictors_vec <- character(n_models)
+for (i in 1:n_models) {
+  rhs <- str_c(predictors[m[i, ]], collapse = " + ")
+  predictors_vec[i] <- rhs
+  f <- str_c(response, " ~ ", rhs)
+  summary_lm_fit <- summary(lm(formula = f, data = train_data))
+  RSS_vec[i] <- sum( resid(summary_lm_fit)^2 )
+  Rsq_vec[i] <- summary_lm_fit$r.squared
+}
+
+best_subset_full <-
+  as_tibble(m) %>%
+  mutate(
+    n_predictors = rowSums(.),
+    predictors = predictors_vec,
+    Rsq = Rsq_vec,
+    RSS = RSS_vec
+  ) %>%
+  group_by(n_predictors) %>%
+  mutate(
+    max_Rsq = (Rsq == max(Rsq)),
+    min_RSS = (RSS == min(RSS))
+  )
+
+g_RSS <-
+  ggplot(best_subset_full, aes(x = n_predictors, y = RSS)) +
+  geom_point(aes(text = predictors), color = "blue", alpha = 0.3) +
+  geom_line(data = best_subset_full %>% filter(min_RSS), color = "red") +
+  geom_point(data = best_subset_full %>% filter(min_RSS), color = "red") +
+  theme_bw() +
+  xlab("Number of predictors") +
+  ylab("RSS")
+
+#library(plotly)
+ggplotly(g_RSS)
+
+g_Rsq <-
+  ggplot(best_subset_full, aes(x = n_predictors, y = Rsq)) +
+  geom_point(aes(text = predictors), color = "blue", alpha = 0.3) +
+  geom_line(data = best_subset_full %>% filter(max_Rsq), color = "red") +
+  geom_point(data = best_subset_full %>% filter(max_Rsq), aes(text = predictors), color = "red") +
+  theme_bw() +
+  xlab("Number of predictors") 
+
+g_Rsq + ylab(expression(R^2))
+
+ggplotly(g_Rsq)
+
+
+
+```
+
+```{r}
+
+# Forward stepwise selection -----
+regfit_fwd <- regsubsets(y ~ ., data = train_data, nvmax = 20, method = "forward")
+summary(regfit_fwd)
+
+# Backward stepwise selection -----
+regfit_bwd <- regsubsets(y ~ ., data = train_data, nvmax = 20, method = "backward")
+summary(regfit_bwd)
+
+# Selecting the optimal model -----
+nvmax <- p
+regfit_full <- regsubsets(y ~ ., train_data, nvmax = nvmax)
+summary_regfit <- summary(regfit_full)
+
+n <- nrow(train_data)
+
+# * Adjustment methods -----
+adjustment_methods <- 
+  tibble(
+    n_predictors = 1:nvmax,
+    adjr2 = summary_regfit$adjr2,
+    cp = summary_regfit$cp,
+    bic = summary_regfit$bic,
+  ) %>%
+  pivot_longer(-n_predictors, names_to = "Measure") %>%
+  mutate(Measure = factor(Measure, levels = c("cp", "bic", "adjr2"), labels = c("C[p]", "BIC", "Adjusted~R^2")))
+
+adjustment_methods_extreme <-
+  tribble(
+    ~n_predictors,                   ~Measure,  ~value,
+    which.max(summary_regfit$adjr2), "adjr2",   max(summary_regfit$adjr2),
+    which.min(summary_regfit$cp),    "cp",      min(summary_regfit$cp),
+    which.min(summary_regfit$bic),   "bic",     min(summary_regfit$bic)
+  ) %>%
+  mutate(Measure = factor(Measure, levels = c("cp", "bic", "adjr2"), labels = c("C[p]", "BIC", "Adjusted~R^2")))
+
+
+ggplot(adjustment_methods, aes(x = n_predictors, y = value)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_line(color = "purple", alpha = 0.7) +
+  geom_point(data = adjustment_methods_extreme, shape = "X", size = 5, color = "blue", alpha = 0.7) +
+  facet_wrap(~ Measure, scales = "free_y", labeller = label_parsed) +
+  ylab(element_blank()) +
+  xlab("Number of predictors") +
+  theme_bw()
+
+```
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(parallel)
+library(leaps)
+
+# Data generation for Scenario 1
+set.seed(1)
+p <- 20   # Number of predictors
+n <- 1000  # Number of observations
+
+sample_data <- function(n, p) {
+  epsilon <- rnorm(n, mean = 0, sd = 0.1)  # Random noise
+  vX <- matrix(NA, n, p, dimnames = list(NULL, paste0("x", 1:p)))
+  
+  vB <- rnorm(p, 0, 1)
+  vB[5:11] <- 0  # Setting some coefficients to 0 (sparse model)
+  vB <- sample(vB)
+  
+  # Generate predictors
+  for (k in 1:p) {
+    vX[, k] <- rnorm(n, mean = 0, sd = 5)
+  }
+  
+  # Generate the response variable y
+  vY = vX %*% vB + epsilon
+  
+  # Convert to tibble
+  df_sample <- as_tibble(vX) %>% mutate(y = vY)
+  
+  return(df_sample)
+}
+
+# Generate sample data
+df <- sample_data(n, p)
+
+# Splitting the data into train and test sets
+train_indices <- sample(1:nrow(df), size = 0.1 * nrow(df), replace = FALSE)
+train_data <- df[train_indices, ]
+test_data <- df[-train_indices, ]
+
+response <- "y"
+predictors <- train_data %>% select(-y) %>% colnames()
+p <- length(predictors)
+
+# Create list of all possible models (combinations of predictors)
+nvmax <- p
+m <- NULL
+for (i in 1:nvmax) {
+  m <- rbind(m, t(apply(combn(1:nvmax, i), 2, function(vars) { r <- rep(FALSE, p); r[vars] <- TRUE; r })))
+}
+
+stopifnot(nrow(m) == 2^nvmax - 1)  # Ensure correct number of models
+colnames(m) <- predictors
+n_models <- 2^nvmax - 1
+
+# Function to compute RSS for each model in parallel
+best_subset_rss_parallel <- function(X, y, max_size = ncol(X)) {
+  rss_results <- list()
+  
+  # Loop over subset sizes
+  for (k in 1:max_size) {
+    cat("Evaluating subsets of size", k, "...\n")
+    
+    # Get all combinations of predictors of size k
+    combos <- combn(ncol(X), k, simplify = FALSE)
+    
+    # Parallel model fitting and RSS computation
+    rss_k <- mclapply(combos, function(cols) {
+      Xi <- X[, cols, drop = FALSE]
+      fit <- lm(y ~ Xi)
+      sum(residuals(fit)^2)
+    }, mc.cores = detectCores() - 1)
+    
+    # Store results for this subset size
+    rss_results[[k]] <- data.frame(
+      size = k,
+      subset = I(combos),
+      rss = unlist(rss_k)
+    )
+  }
+  
+  # Combine all results into a single data frame
+  do.call(rbind, rss_results)
+}
+
+# Prepare the model fitting input
+X <- as.matrix(train_data %>% select(-y))  # Exclude response variable
+y <- train_data$y
+
+# Run best subset RSS calculation in parallel (for subsets up to 5 predictors)
+best_subset_results <- best_subset_rss_parallel(X, y, max_size = 5)
+
+# Visualizing RSS for all models (subset sizes)
+g_RSS <- ggplot(best_subset_results, aes(x = size, y = rss)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_line(color = "red") +
+  theme_bw() +
+  xlab("Number of predictors") +
+  ylab("RSS")
+
+# Visualizing the plot interactively
+library(plotly)
+ggplotly(g_RSS)
+
+# Calculating R² and other metrics for the best subset models
+Rsq_vec <- numeric(n_models)
+RSS_vec <- numeric(n_models)
+predictors_vec <- character(n_models)
+
+for (i in 1:n_models) {
+  rhs <- paste(predictors[m[i, ]], collapse = " + ")
+  predictors_vec[i] <- rhs
+  f <- paste(response, " ~ ", rhs)
+  summary_lm_fit <- summary(lm(formula = f, data = train_data))
+  RSS_vec[i] <- sum(residuals(summary_lm_fit)^2)
+  Rsq_vec[i] <- summary_lm_fit$r.squared
+}
+
+# Combining results into a tibble
+best_subset_full <- as_tibble(m) %>%
+  mutate(
+    n_predictors = rowSums(.),
+    predictors = predictors_vec,
+    Rsq = Rsq_vec,
+    RSS = RSS_vec
+  ) %>%
+  group_by(n_predictors) %>%
+  mutate(
+    max_Rsq = (Rsq == max(Rsq)),
+    min_RSS = (RSS == min(RSS))
+  )
+
+# Plot RSS vs. Number of Predictors
+g_RSS_final <- ggplot(best_subset_full, aes(x = n_predictors, y = RSS)) +
+  geom_point(aes(text = predictors), color = "blue", alpha = 0.3) +
+  geom_line(data = best_subset_full %>% filter(min_RSS), color = "red") +
+  geom_point(data = best_subset_full %>% filter(min_RSS), color = "red") +
+  theme_bw() +
+  xlab("Number of predictors") +
+  ylab("RSS")
+
+ggplotly(g_RSS_final)
+
+# Plot R² vs. Number of Predictors
+g_Rsq_final <- ggplot(best_subset_full, aes(x = n_predictors, y = Rsq)) +
+  geom_point(aes(text = predictors), color = "blue", alpha = 0.3) +
+  geom_line(data = best_subset_full %>% filter(max_Rsq), color = "red") +
+  geom_point(data = best_subset_full %>% filter(max_Rsq), aes(text = predictors), color = "red") +
+  theme_bw() +
+  xlab("Number of predictors")
+
+g_Rsq_final + ylab(expression(R^2))
+
+ggplotly(g_Rsq_final)
+
+# Forward Stepwise Selection
+regfit_fwd <- regsubsets(y ~ ., data = train_data, nvmax = 20, method = "forward")
+summary(regfit_fwd)
+
+# Backward Stepwise Selection
+regfit_bwd <- regsubsets(y ~ ., data = train_data, nvmax = 20, method = "backward")
+summary(regfit_bwd)
+
+# Selecting the optimal model using adjusted R², Cp, and BIC
+regfit_full <- regsubsets(y ~ ., train_data, nvmax = p)
+summary_regfit <- summary(regfit_full)
+
+adjustment_methods <- tibble(
+  n_predictors = 1:p,
+  adjr2 = summary_regfit$adjr2,
+  cp = summary_regfit$cp,
+  bic = summary_regfit$bic
+) %>%
+  pivot_longer(-n_predictors, names_to = "Measure") %>%
+  mutate(Measure = factor(Measure, levels = c("cp", "bic", "adjr2"), labels = c("C[p]", "BIC", "Adjusted~R^2")))
+
+# Extreme points (min/max for each measure)
+adjustment_methods_extreme <- tribble(
+  ~n_predictors, ~Measure, ~value,
+  which.max(summary_regfit$adjr2), "adjr2", max(summary_regfit$adjr2),
+  which.min(summary_regfit$cp), "cp", min(summary_regfit$cp),
+  which.min(summary_regfit$bic), "bic", min(summary_regfit$bic)
+) %>%
+  mutate(Measure = factor(Measure, levels = c("cp", "bic", "adjr2"), labels = c("C[p]", "BIC", "Adjusted~R^2")))
+
+# Plot adjustment methods (Adjusted R², Cp, and BIC)
+ggplot(adjustment_methods, aes(x = n_predictors, y = value)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_line(color = "purple", alpha = 0.7) +
+  geom_point(data = adjustment_methods_extreme, shape = "X", size = 5, color = "blue", alpha = 0.7) +
+  facet_wrap(~ Measure, scales = "free_y", labeller = label_parsed) +
+  ylab(element_blank()) +
+  xlab("Number of predictors") +
+  theme_bw()
+
+```

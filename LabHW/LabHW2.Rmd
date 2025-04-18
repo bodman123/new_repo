@@ -1,0 +1,122 @@
+---
+title: "LabHW2"
+author: "Jerry Obour"
+date: "2025-02-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question 1
+
+a) This is a regression problem since variables of interest are all quantitative, that is aside from the industry name, the number of employees and the salarary of the CEO are all quantitative variables hence it can be assumed to be a regression problem other than a classification problem.
+
+b) This is a classification problem due to the fact that the outcome of the results comprises two categories, success or failure. Regardless of the existemces of the other quantitative variables involved, since the focus of the study is to predict one of the two categorical outcomes, then it is fine to classify it as a Classification problem.
+
+c) This is a regression problem since the outcome of the experiment involves predicting % change in the USD/Euro exchnage rate which is a quantity other than a category to classify. It as result qualifies it more as a regression problem instead of a classification problem.
+
+
+# Question 2
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+f_2_9 <- function(x) {
+  -4.5 * ((x - 10) / 50)^3 + 9 * ((x - 10) / 50)^2 + 4.2
+}
+
+x_range_tibble <- tibble(x = c(0, 100))
+
+set.seed(1)
+n_train <- 45
+n_test <- 15
+var_epsilon <- 2
+
+test_data <- 
+  tibble(
+    x = runif(n = n_test, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n_test, sd = sqrt(var_epsilon)),
+    type = "te"
+  )
+
+train_data <- 
+  tibble(
+    x = runif(n = n_train, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n_train, sd = sqrt(var_epsilon)),
+    type = "tr"
+  )
+
+df_seq <- seq(2, 25, 0.1)
+MSEP <- tibble(df = rep(NA, length(df_seq)), train = NA, test = NA)
+MSEE <- tibble(df = rep(NA, length(df_seq)), train = NA, test = NA)
+
+for(i in 1:length(df_seq)) {
+  MSEP$df[i] <- df_seq[i]
+  MSEE$df[i] <- df_seq[i]
+  
+  smsp_2_9 <- smooth.spline(x = train_data$x, y = train_data$y, df = df_seq[i])
+  
+  pred_train <- predict(smsp_2_9, x = train_data$x)
+  MSEP$train[i] <- mean( (train_data$y - pred_train$y) ^ 2 )
+  MSEE$train[i] <- mean( (train_data$true_f_x - pred_train$y) ^ 2 )
+  
+  pred_test <- predict(smsp_2_9, x = test_data$x)
+  MSEP$test[i] <- mean( (test_data$y - pred_test$y) ^ 2 )
+  MSEE$test[i] <- mean( (test_data$true_f_x - pred_test$y) ^ 2 )
+} 
+
+MSEP$type <- "MSEP"
+MSEE$type <- "MSEE"
+
+MSE <- bind_rows(MSEP, MSEE)
+
+MSE_long <- pivot_longer(MSE, cols = c(train, test), names_to = "Subset", values_to = "MSE")
+
+g_MSE <-
+  ggplot(MSE_long) +
+  geom_line(aes(x = df, y = MSE, color = Subset,linetype =type )) +
+  theme_bw()
+
+min_MSEP_test_df <-
+  MSEP %>%
+  filter(test == min(test)) %>%
+  pull(df)
+
+min_MSEE_test_df <- 
+  MSEE %>%
+  filter(test == min(test)) %>%
+  pull(df)
+
+
+g_MSE +
+  xlab("Flexibility") +
+  ylab("Mean Squared Error") +
+  geom_point(
+    data = MSE_long %>% filter(df %in% c(2, 5, 23)),
+    aes(x = df, y = MSE),
+    color = rep(c("orange", "orange", "blue", "blue", "green", "green"), 2), 
+    shape = "square"
+    ) +
+  geom_point(
+    data = MSE_long %>% filter(df == min_MSEP_test_df, type == "MSEP"),
+    aes(x = df, y = MSE),
+    color = "black",
+    shape = "X",
+    size = 3
+    ) +
+  geom_point(
+    data = MSE_long %>% filter(df == min_MSEE_test_df, type == "MSEE"),
+    aes(x = df, y = MSE),
+    color = "black", 
+    shape = "X", 
+    size = 3
+    )
+
+
+```

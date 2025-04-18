@@ -1,0 +1,622 @@
+---
+title: "LabHW3"
+author: "Jerry Obour"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(plotly)
+```
+# Question 1:
+
+```{r}
+set.seed(1)
+```
+
+## a)
+
+```{r}
+Ydata <- runif(1000)
+df <- tibble(y=Ydata)
+
+for (i in 1:100){
+  df[[paste0('x',i)]] <- runif(1000)
+}
+```
+
+
+
+
+```{r}
+lm_fit <- lm(y ~ .,data = df)
+smry <- summary(lm_fit)
+```
+
+
+```{r}
+
+i_count <- 0
+
+for (i in 1:101){
+  if (smry$coefficients[,4][i] < 0.05){
+    i_count = i_count +1
+  }
+}
+(i_count)
+```
+From the above results, there exists some predictors whose marginal p-values are below $0.05$. Since the value changes with each run of the data, my current estimate is $8$ which could potentially decrease or increase for another run.
+
+```{r}
+f <- smry$fstatistic
+(smry)
+(f_pval <- pf(f[1], f[2], f[3], lower.tail = FALSE))
+```
+The `pf` as used above takes values for the vector quantiles, and the degrees of freedom. Here $f(1)$ is the f-statistic value , $f(2)$ the total number of degrees of freedom which is the total number of predictors in all and is the numerator and $f(3)$ which is the residual degrees of freedom and is the denominator. With these values, $pf$ gives the distribution function and is used to calculate the p-value of the F-test.
+
+## b)
+
+```{r}
+results <- tibble(total_count = numeric(1000), p_value = numeric(1000))
+```
+
+
+```{r}
+N <- 1000
+
+for (ij in 1:N){
+  
+  Ydata <- runif(1000)
+  df <- tibble(y=Ydata)
+  
+  for (i in 1:100){
+    df[[paste0('x',i)]] <- runif(1000)
+  }
+  
+  # fitting the linear model
+  lm_fit <- lm(y ~ .,data = df)
+  smry <- summary(lm_fit)
+  
+  
+  # count
+  i_count <- 0
+
+  for (i in 1:101){
+    if (smry$coefficients[,4][i] < 0.05){
+      i_count = i_count +1
+    }
+  }
+  
+  
+  # p_value
+  f <- smry$fstatistic
+  f_pval <- pf(f[1], f[2], f[3], lower.tail = FALSE)
+  
+  
+  results$total_count[ij] <- i_count
+  results$p_value[ij] <- f_pval
+  
+}
+
+```
+
+
+```{r}
+cnt <- 
+  results %>%
+  filter(total_count >= 2) %>%
+  summarise(n=n())
+
+(cnt)/N
+```
+i) Clearly , the proportion of the of the simulations in which at least one marginal p-value for a t-test is less than $0.987$
+
+
+```{r}
+cnt <- 
+  results %>%
+  filter(p_value < 0.05) %>%
+  summarise(n=n())
+
+(cnt)/N
+```
+
+ii) Clearly , the proportion of the of the simulations in which the p-value for f-test is less than $0.05$ is $0.048$ according to the above results.
+
+# Question 2:
+
+```{r}
+library(ggplot2)
+## Boston Data
+library(ISLR2)
+```
+
+
+```{r}
+coeff_data <- tibble(SLR = numeric(12), MLR = numeric(12))
+
+```
+
+```{r}
+(lm_summary <- summary(lm(crim ~ zn, data = Boston)))
+coeff_data$SLR[1] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = zn, y = crim)) +
+  geom_point() +  # scatter plot of data points
+  geom_smooth(method = "lm", color = 'red') 
+```
+From the above, it is clear that not enough of the per capita crime rate by town is well explained by the proportion of residential land zoned for lots over $24,000$ sq.ft `zn`. This is reflected both by the value of the $R^2$ and the adjusted-$R^2$. Moreover, the p-value for the coefficients is very small below $0.05$ and almost insignificant. The graph below confirms this even though there is some small negative relationship.
+
+
+```{r}
+(lm_summary <- summary(lm(crim ~ indus, data = Boston)))
+coeff_data$SLR[2] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = indus, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+From the above, it is clear that not enough of the per capita crime rate by town is well explained by the proportion of non-retail business acres per town `indus`. This is reflected both by the value of the $R^2$ and the adjusted-$R^2$.They seem a little high which tells at least some sort of variations in `crim` explained by `indus` but not much. Moreover, the p-values for the coefficients is very small below $0.05$ and almost insignificant. Some small positive relation is seen in the graph.
+
+
+
+```{r}
+(lm_summary <- summary(lm(crim ~ chas, data = Boston)))
+coeff_data$SLR[3] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = chas, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+Also from the above, it is clear that not enough of the per capita crime rate by town is well explained by the Charles River dummy variable (= 1 if tract bounds river; 0 otherwise), `chas`. This is due to the fact that the `chas` values are categorical and a simple linear regression cannot be used to determine the nature of the relationship between `chas` and the `crim`.This is most reflected by the graph of the fit. It is difficult to relate a value response to a categorical predictor with a simple linear regression.
+
+
+
+```{r}
+(lm_summary <- summary(lm(crim ~ nox, data = Boston)))
+coeff_data$SLR[4] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = nox, y = crim)) +
+  geom_point() +  # scatter plot of data points
+  geom_smooth(method = "lm", color = 'red') 
+```
+Even with very small p-values for the estimated coefficients, the variation in the per capita crime rate by town explained by nitrogen oxides concentration (parts per 10 million) is somewhat significant and a spike of positive relation can be seen between the two variables. This is most seen in the model fit and also the values of the $R^2$ and adjusted-$R^2$
+
+
+
+```{r}
+(lm_summary <- summary(lm(crim ~ rm, data = Boston)))
+coeff_data$SLR[5] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = rm, y = crim)) +
+  geom_point() +  # scatter plot of data points
+  geom_smooth(method = "lm", color = 'red') 
+```
+Comparing the per capita crime rate by town to  the average number of rooms per dwelling, it can be seen from the graph that most of the data is peaked at the center and a spike of a negative relationship is spot between the two of them. Unfortunately, results from the model fit, $R^2$ indicates that not much of the variation in `crim` is explained by the variations in `rm` and moreover, the p-values estimated for the coefficients are very small and almost insignificant .
+
+
+
+```{r}
+(lm_summary <- summary(lm(crim ~ age, data = Boston)))
+coeff_data$SLR[6] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = age, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+Even with very small p-values for the estimated coefficients, the values for the $R^2$ and adjusted $R^2$ give some small significance about the variation in `crim` that is explained by the variation in the proportion of owner-occupied units built prior to 1940. Moreover, the graph for the fit indicates the positive nature of the relationship between both variables.
+
+```{r}
+(lm_summary <- summary(lm(crim ~ dis, data = Boston)))
+coeff_data$SLR[7] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = dis, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+There is some small relationship between the per capita crime rate by town and the weighted mean of distances to five Boston employment centres as indicated by the graph of the fit which seems to be a negative relationship. Even amidst this, the estimated p-values for the coefficients are very small and almost insignificant. Moreover, the values of $R^2$ and adjusted $R^2$ indicate that some small variations in `crim` that is explained by the variations in `dis`.
+
+
+```{r}
+(lm_summary <- summary(lm(crim ~ rad, data = Boston)))
+coeff_data$SLR[8] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = rad, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+Although there is some small positive relation between the per capita crime rate by town and  index of accessibility to radial highways, the distribution of the data in the graph of the fit tells how insignificant this association could be due to how the data are clustered in vertical forms. Using such a model would not properly predict values of the the `crim`.
+
+```{r}
+(lm_summary <- summary(lm(crim ~ tax, data = Boston)))
+coeff_data$SLR[9] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = tax, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+
+Even with some spike of positive relation between the per capita crime rate by town and the full-value property-tax rate per $\$10,000$, results from $R^2$, adjusted-$R^2$ are quite small with almost insignificant p-values for estimated coefficients. Thus the model is able capture only  a few of the data points in graph and the variations in crim cannot be properly explained by the variations in tax. 
+
+```{r}
+(lm_summary <- summary(lm(crim ~ ptratio, data = Boston)))
+coeff_data$SLR[10] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = ptratio, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+Similar to the results in the tax, the graph of the fit between the per capita crime rate by town and the pupil-teacher ratio by town is positive, but with majority of the data distributed at the maximum, it is hard for the variations in crim to be properly accounted for by the ptratio as this is illustrated by values of the $R^2$ and the p-values of the estimated coefficients.
+
+```{r}
+(lm_summary <- summary(lm(crim ~ lstat, data = Boston)))
+coeff_data$SLR[11] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = lstat, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+
+The distribution of data points in the graph of the per capita crime rate by town to the lower status of the population (percent) seems to be fairly great and a positive association is seen between both variables.
+Even with very small p-values for the estimated coefficients, the value of $R^2$ obtained though small is good enough which supports the fact that some variations in crim can be accounted for by the variations in lstat.
+
+
+```{r}
+(lm_summary <- summary(lm(crim ~ medv, data = Boston)))
+coeff_data$SLR[12] <- (lm_summary$coefficients[,1][2])
+ggplot(Boston, aes(x = medv, y = crim)) +
+  geom_point() +  
+  geom_smooth(method = "lm", color = 'red') 
+```
+Similar to the relation between crim and lstat, the relation between the per capita crime rate by town and the median value of owner-occupied homes in $\$1000s$ is good enough with the value of $R^2$ slightly significant to support the assertion that some variation in crim can be explained by variations in medv. The only difference here is that the relation is rather negative.
+
+
+## b)
+```{r}
+(fit_summary <- summary(lm(crim ~ ., data = Boston)))
+
+```
+From the above results, for the predictors `dis` , `rad`, and `medv` , we fail to reject the null hypothesis that $H_0 : \beta_j = 0$ considering their marginal p-values falling very low below $0.05$. Moreover, the joint model possess a higher results for the $R^2$ and adjusted-$R^2$ which is an improvement in the individual relations which were considered at first.
+
+
+
+## c)
+
+
+```{r}
+coeff_data$MLR <- fit_summary$coefficients[,1][2:13]
+```
+
+```{r}
+(coeff_data)
+```
+
+```{r}
+plot(coeff_data$SLR, coeff_data$MLR, xlab = "Simple Linear Regression Coefficients", ylab = "Multiple Linear Regression Coefficients", main = "Plot of SLR coefficients against MLR coefficients")
+
+```
+The above graph indicates the plot of the coefficients from the simple linear regression against the coefficients obtained using the multiple linear regression model. Clearly, the coefficients for some predictors are affected by the presence of other predictors in the multiple linear regression. It is clear that, better results are obtained when a multiple linear regression model is used in fitting the data as compared to considering individual fits.
+
+```{r}
+#For each of the predictors, fit a polynomial of degree 3....
+#summary(lm(Boston$crim ~ poly(Boston$zn, 3)))
+
+#Run a for loop and record the p-value for each ... compare the p-values and determine which is significant...
+
+```
+
+## d)
+```{r}
+polynomial_pvals <- tibble(names = rep(NA_character_, 12), pval = numeric(12))
+
+
+for (i in 2:ncol(Boston)) {
+  predictor <- names(Boston)[i]
+  
+  # Ensure that the predictor is numeric for poly() function
+  if (is.numeric(Boston[[predictor]])) {
+    formula <- as.formula(paste("crim ~ poly(", predictor, ", 3, raw = TRUE)"))
+    lm_poly <- lm(formula, data = Boston)
+    smry_poly <- summary(lm_poly)
+    
+    # Store predictor name and its corresponding p-value
+    polynomial_pvals$names[i-1] <- predictor
+    
+    # Extract F-statistic and its p-value
+    f <- smry_poly$fstatistic
+    if (all(!is.na(f))) { 
+      f_pval <- pf(f[1], f[2], f[3], lower.tail = FALSE)
+      polynomial_pvals$pval[i-1] <- f_pval
+    } else {
+      polynomial_pvals$pval[i-1] <- NA 
+    }
+  } else {
+    polynomial_pvals$pval[i-1] <- NA  }
+}
+
+```
+
+```{r}
+(polynomial_pvals)
+```
+After fitting polynomial curve of degree 3 to each of the predictors with the response, the p-values recorded are infinitesimally small and insignificant except for the Charles River dummy variable (= 1 if tract bounds river; 0 otherwise) which is a categorical data. From my observation, there is no non-linear association between the response variable and any of the predictor variables.
+
+
+# Question 3:
+
+```{r}
+
+f_2_9 <- function(x) {
+  -4.5 * ((x - 10) / 50)^3 + 9 * ((x - 10) / 50)^2 + 4.2
+}
+
+x_range_tibble <- tibble(x = c(0, 100))
+
+set.seed(1)
+n_train <- 45
+n_test <- 15
+var_epsilon <- 2
+
+test_data <- 
+  tibble(
+    x = runif(n = n_test, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n = n_test, mean = 0, sd = sqrt(var_epsilon)),
+    type = "te"
+  )
+
+train_data <- 
+  tibble(
+    x = runif(n = n_train, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n = n_train, mean = 0, sd = sqrt(var_epsilon)),
+    type = "tr"
+  )
+
+df_seq <- seq(1, 10, 1)
+MSEP <- tibble(df = rep(NA, length(df_seq)), train = NA, test = NA)
+
+for (i in 1:length(df_seq)) {
+  MSEP$df[i] <- df_seq[i]
+  
+ 
+  smsp_2_9 <- lm(y ~ poly(x, df_seq[i], raw = TRUE), data = train_data)
+  
+
+  pred_train <- predict(smsp_2_9, newdata = train_data)
+  
+ 
+  MSEP$train[i] <- mean( (train_data$y - pred_train) ^ 2 )
+  
+ 
+  pred_test <- predict(smsp_2_9, newdata = test_data)
+
+  MSEP$test[i] <- mean( (test_data$y - pred_test) ^ 2 )
+} 
+
+MSEP_long <- pivot_longer(MSEP, cols = c(train, test), names_to = "Subset", values_to = "MSEP")
+
+g_MSEP0 <-
+  ggplot(MSEP_long) +
+  geom_line(aes(x = df, y = MSEP, color = Subset)) +
+  theme_bw()
+
+min_test_df <-
+  MSEP %>%
+  filter(test == min(test)) %>%
+  pull(df)
+
+(ng <-
+  g_MSEP0 +
+  xlab("Flexibility") +
+  ylab("Mean Squared Error") +
+  geom_point(data = MSEP_long %>% filter(df == min_test_df), aes(x = df, y = MSEP), color = "black", shape = "X", size = 3))
+
+ggplotly(ng) 
+```
+
+## b)
+From the above plots, it is evident that  the training MSEP decreases as flexibility increases and this is due to the fact that increase in the degree of the  polynomials fit the training data more closely. Morevoer, it can be inferred from the above that the training MSEP undergoes an initial decreases as flexibility increases, reaching a minimum at the optimal degree, then increases due to overfitting.
+The best bias-variance trade off is seen at the point where testing MSEP is minimized and is represented in the graph. Beyond that, there is the issue of overfitting as seen in the continual increase in the degrees of the polynomial(degrees of freedom).
+
+
+## c)
+```{r}
+optimal_model <- lm(y ~ poly(x, min_test_df, raw = TRUE), data = train_data)
+plot_data <- tibble(x = seq(0, 100, length.out = 1000))
+plot_data <- plot_data %>%
+  mutate(
+    true_f_x = f_2_9(x),
+    predicted_f_x = predict(optimal_model, newdata = plot_data)
+  )
+
+ggplot() +
+  geom_line(data = plot_data, aes(x = x, y = true_f_x, color = "True Curve"), linewidth = 1) +  
+  geom_line(data = plot_data, aes(x = x, y = predicted_f_x, color = "Least MSE Polynomial"), linewidth = 1) +  
+  geom_point(data = train_data, aes(x = x, y = y, color = "Training Data"), alpha = 0.5) +
+  geom_point(data = test_data, aes(x = x, y = y, color = "Testing Data"), alpha = 0.5) +
+  theme_bw() +
+  xlab("x") +
+  ylab("y") +
+  ggtitle("True Function vs. Estimated Function") +
+  scale_color_manual(values = c("True Curve" = "black", "Least MSE Polynomial" = "orange", "Training Data" = "red", "Testing Data" = "green")) +
+  theme(legend.title = element_blank())  # Optional: removes legend title
+
+
+```
+
+
+The graph above shows the plot of the train and test data with a fit of the true curve as given in the problem statement as well as the estimated polynomial regression with the least MSEP. Although the estimated polynomial fit does not match the exact curve, there is a resemblance and the variations can be due to the errors in estimating the weights or parameters for the model.
+The estimated regression function with the lowest MSEP for the testing set is a polynomial of degree $( k = \text{min_test_df} )$. The function can be written as:
+
+$$
+\hat{f}(x) = \hat{\beta}_0 + \hat{\beta}_1 x + \hat{\beta}_2 x^2 + \dots + \hat{\beta}_k x^k
+$$
+
+where $ \hat{\beta}_0, \hat{\beta}_1, \dots, \hat{\beta}_k $ are the coefficients obtained from fitting the polynomial regression model to the training data. These coefficients can be extracted in R using:
+
+```{r}
+coefficients(optimal_model)
+```
+
+From the results the coefficients are:
+$\hat{\beta_0}=6.319791$, $\hat{\beta_1}=-0.1991694$, $\hat{\beta_2}=0.006765512$, and $\hat{\beta_3}=-0.00004634246$.
+Thus, the estimated regression function is 
+$$\hat{f}(x)=6.319791-0.1991694x+0.006765512x^{2}-0.00004634246x^{3}$$
+
+The true function is given by
+$$f(x)=-4.5\bigg(\dfrac{x-10}{50}\bigg)^{3}+9\bigg(\dfrac{x-10}{50}\bigg)^{2}+4.2$$
+$$f(x)=-0.000036x^{3}+0.00468x^{2}-0.0828x+4.596.$$
+The estimated regression function with the lowest MSEP, $\hat{f}(x)$, is a cubic polynomial, which corresponds to the form of the true function, $f(x)$. This can be shown by using Wolfram alpha to simplify the polynomial and comparing the results in the estimated polynomial and the result.
+ The model has effectively captured the underlying relationship, as evidenced by the estimated function's coefficients being near to the genuine coefficients.
+ The training set's unpredictability or data noise are probably to blame for the small variations in the intercept and linear term. All things considered, the estimated function gives a decent approximation of the true function and generalizes well to the testing data.
+
+
+
+
+# Question 4:
+
+## a)
+
+```{r}
+# Bias-Variance Trade-off -----
+f_2_9 <- function(x) {
+  -4.5 * ((x - 10) / 50)^3 + 9 * ((x - 10) / 50)^2 + 4.2
+}
+
+n_train <- 45
+n_test <- 15
+var_epsilon <- 2
+
+set.seed(1)
+# This is our single one and only test set:
+test_data <- 
+  tibble(
+    x = runif(n = n_test, min = 0, max = 100),
+    true_f_x = f_2_9(x),
+    y = true_f_x + rnorm(n_test, sd = sqrt(var_epsilon))
+  )
+
+df_seq <- seq(1, 10, 1)
+# We'll repeat the simulation 100 times:
+M <- 100
+
+# Data frame for all results (we need to average over MSE / bias / var for each x over many datasets,
+# so we need to store all the predictions as a first step, then compute point-wise MSE / bias / var 
+# and average over those)
+
+# Important difference between this and the previous simulation:
+# Here, we need to compute the variance and bias for each point. So
+# we can't just sample a training dataset, compute a statistic (MSE)
+# save it, and repeat. We need to save ALL predictions from all training
+# datasets, and post-hoc compute the variance for each point across all datasets.
+
+
+predictions <- NULL
+for (m in 1:M) {
+  if (m%%5 == 0) print(m)
+  # Sample a training dataset: (many times)
+  train_data <- 
+    tibble(
+      x = runif(n = n_train, min = 0, max = 100),
+      true_f_x = f_2_9(x),
+      y = true_f_x + rnorm(n_train, sd = sqrt(var_epsilon)),
+      type = "tr"
+    )
+  
+  # For each dataset, compute avg. bias, avg. variance and test MSE for each level of flexibility:
+  for (i in 1:length(df_seq)) {
+    smsp_2_9 <- lm( y ~ poly(x,df_seq[i],raw=TRUE), data = train_data)
+    
+    pred_test <- 
+      as_tibble(predict(smsp_2_9, newdata = test_data)) %>%
+      rename(pred_f_x = value) %>%
+      mutate(
+        true_f_x = test_data$true_f_x,
+        true_y = test_data$y,
+        test_obs_idx = factor(row_number()),
+        m = m,
+        df = df_seq[i]
+      )
+    
+    predictions <- bind_rows(predictions, pred_test)
+  }
+}
+```
+```{r}
+(predictions)
+
+```
+
+```{r}
+bias_var_MSE <-                              
+  predictions %>%                            # What does this object contain?
+  group_by(test_obs_idx, df) %>%             # What does this line do?
+  summarize(
+    pt_wise_bias_sq = (mean(pred_f_x - true_f_x)) ^ 2,
+    pt_wise_var = mean( (pred_f_x - mean(pred_f_x)) ^ 2 ),
+    pt_wise_MSEE = mean( (pred_f_x - true_f_x) ^ 2 ),
+    pt_wise_MSEP = mean( (pred_f_x - true_y) ^ 2 )
+  ) %>%
+  # How do the above formulas (in conjunction with the group_by and summarize functions) 
+  # relate to the mathematical formulas for Bias, Variance, MSEE and MSEP?
+  group_by(df) %>%                           # What does this line do?
+  summarize(
+    bias_sq = mean(pt_wise_bias_sq),
+    var = mean(pt_wise_var),
+    MSEE = mean(pt_wise_MSEE),
+    MSEP = mean(pt_wise_MSEP)
+  )
+# What is the resulting object bias_var_MSE? What does it contain (rows, columns, values)?
+
+
+# If we did this right, the summary statistic MSEP should equal the one we computed for Figure 2.9:
+#all.equal(
+#  MSEP_summary %>% filter(Subset == "test") %>% pull(mean_MSEP), 
+ # bias_var_MSE$MSEP
+#)
+
+
+#all.equal(bias_var_MSE$MSEE, "")
+# Always true
+
+#est_var_epsilon <- ""
+est_var_epsilon <- mean(bias_var_MSE$MSEP - bias_var_MSE$MSEE)
+
+#bias_var_MSE$MSEP - (bias_var_MSE$bias_sq + bias_var_MSE$var + est_var_epsilon)
+# True only in the limit
+
+g <-
+  bias_var_MSE %>%
+  pivot_longer(c(bias_sq, var, MSEE, MSEP)) %>% 
+  ggplot() +
+  geom_line(aes(x = df, y = value, color = name)) +
+  geom_hline(yintercept = est_var_epsilon, lty = 2) +
+  theme_bw() +
+  xlab("Flexibility") +
+  ylab("Mean Squared Error") +
+  theme(legend.title = element_blank())
+
+ggplotly(g) 
+
+```
+
+## b)
+i. The predictions object comprises a tibble which contains a record for each of the following columns from simulating each polynomial at some M different times:
+
+** `pred_f_x`: The estimated value after fitting a polynomial model to the test data for each observation.
+** `true_f_x`: This column contains the actual true values for the original model $f_{2.9}(x)$ for each test observation.
+** `true_y`: This column contains the true values of y from the simulated model for each given test observation.
+** `test_obs_idx`: In this column, there are a set of unique identifiers for each of the observations for each of the 15 test observation indices. Thus for each $m$ and each $df$, there is a prediction for each of the 15 individual test observations.
+** `m`: Out of the total $M$ simulations we run for each degree of polynomial, $m$ records the simulation number out of $M$.
+** `df`: This column records the degree of the polynomial used for a given simulation.
+
+
+
+ii. `group_by(test_obs_idx, df)` takes the tibble from the prediction and splits the data into groups according to the test_obs_idx as well as the degree of the polynomial before finding the summary parameters( thus summarizing the data). It makes use of the `group_by` function in ordering the data. The grouping is done first according to the test_obs_idx and then followed by the df. We then perform a summary statistics on it.
+
+
+iii. Beyond the `group_by()`, is the `summarize()` where we define our summary statistics. Here, we perform a point-wise summary statistics by using all the saved predictions for each of every $15$ set of test observations and their corresponding degrees of freedom.We do this by computing the variance and bias for each point as well as the MSE and MSEP for the points in the $M$ number of simulations we run and then average the results the results to find the point-wise statistic for every $15$ test set observations and their corresponding degrees of polynomial. With $M$, total number of simulations for a given polynomial and a 15 number of test observations,
+ the variable names and formulas defined in the `summarize()` function conforms to the following: $pt\_wise\_bias\_sq = [\dfrac{1}{M}\sum_{i=1}^M(\hat{f}(x)-f(x))]^2$ which is the bias for the 15 test set for a given $df$ and all $m$. Similarly, $pt\_wise\_var = \dfrac{1}{M}\sum_{i=1}^M(\hat{f}(x)-\bar{f(x)})^2$, $\bar{f(x)}$ the mean of the predictions. And we through that estimate the MSEE and MSEP for each $15$ test set observation for all  $m$ and a given $df$. $pt\_wise\_MSEE = \dfrac{1}{M}\sum_{i=1}^M(\hat{f}(x)-f(x))^2$ $pt\_wise\_MSEP = \dfrac{1}{M}\sum_{i=1}^M(\hat{f}(x)-y)^2$.
+ 
+iv. The result is passed on as a new data to be further summarized and this time around, grouped by the degrees of freedom(The degrees of the polynomial). Thus  each degrees of freedom now has an estimate for its 15 point-wise estimates corresponding to the 15 test observations.
+For each 15-test set corresponding to a given `df`, we average the results and put for Bias, Variance, MSEP and MSEE and organize them under the given degrees of freedom.
+
+v. The resulting object bias_var_MSE is a tibble with 10 records and 5 columns with each record corresponding to a specific degree of the polynomial(which is the first column) and the other columns include the values for the Bias, Variances, MSEE and MSEP that corresponds to each of the degrees of freedom(the degree of a given polynomial).
